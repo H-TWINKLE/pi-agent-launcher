@@ -11,7 +11,9 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 
 - **One-click launch** — Click the π button in the toolbar to start Pi
 - **Terminal integration** — Pi runs as a tab inside the IDE's Terminal window (alongside Local)
-- **Send to Pi** — Select code → Right-click → "Send to Pi" inserts `@path/file.go#L10-25` into Pi's input
+- **Send to Pi** — Select code → Right-click → "Send to Pi" inserts `@path/file.go#L10-25` into the active terminal tab
+- **Copy reference** — Right-click code or a file → "Copy Code/File Reference" puts `@path/file.go#L10-25` on the clipboard
+- **Terminal support** — Sends references to the active terminal tab, including the new terminal engine used by recent WebStorm/IntelliJ versions
 - **Auto-open files** — Files modified by Pi automatically open in the editor
 - **Completion notifications** — Get notified when Pi finishes
 - **Model configuration** — Pick model and thinking level from `~/.pi/agent/models.json`
@@ -40,7 +42,8 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 - **Pi command** — Custom path to pi binary
 - **Extra arguments** — Additional CLI flags
 - **Auto-open files** — Toggle auto-opening modified files
-- **Notifications** — Toggle completion notifications
+- **Disable Pi themes** — Append `--no-themes` so Pi follows the IDE theme instead of its own
+- **Notifications** — Toggle file-change, startup/exit and clipboard-copy notifications separately
 
 ## Supported IDEs
 
@@ -66,15 +69,23 @@ src/main/kotlin/com/piagent/launcher/
 ├── actions/
 │   ├── LaunchPiAction.kt          # Toolbar button → launch Pi
 │   ├── OpenPiAction.kt            # Cmd+Esc → focus Pi
-│   └── SendSelectionAction.kt     # Send @file#L reference
+│   ├── SendSelectionAction.kt     # Send @file#L reference to the active terminal
+│   ├── SendFileToPiAction.kt      # Send @file reference from Project View
+│   ├── CopyCodeReferenceAction.kt # Copy @file#L reference to the clipboard
+│   ├── CopyFileReferenceAction.kt # Copy @file reference to the clipboard
+│   ├── PiActionData.kt            # Shared file/editor data lookup
+│   ├── PiClipboard.kt             # Clipboard copy + send-failure fallback
+│   └── PiNotifications.kt         # Action feedback notifications
 ├── services/
 │   ├── PiTerminalService.kt       # Terminal lifecycle + send text
 │   ├── PiDiffWatcher.kt           # File change → diff preview
 │   └── PiFileWatcher.kt           # Auto-open + notifications
-└── settings/
-    ├── PiSettings.kt              # Persistent config
-    ├── PiSettingsConfigurable.kt  # Settings UI panel
-    └── PiModelLoader.kt           # Load models from models.json
+├── settings/
+│   ├── PiSettings.kt              # Persistent config
+│   ├── PiSettingsConfigurable.kt  # Settings UI panel
+│   └── PiModelLoader.kt           # Load models from models.json
+└── references/
+    └── PiReference.kt             # Build @path and @path#L10-25 references
 ```
 
 ## License

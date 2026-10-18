@@ -9,9 +9,11 @@
 
 - **一键启动** — 点击工具栏 π 按钮启动 Pi
 - **终端集成** — Pi 作为 IDE Terminal 窗口的一个 tab（和 Local 并列）
-- **发送选区** — 选中代码 → 右键 → "Send to Pi"，自动插入 `@path/file.go#L10-25` 到 Pi 输入框
+- **发送选区** — 选中代码 → 右键 → "Send to Pi"，自动插入 `@path/file.go#L10-25` 到当前激活的终端 tab
+- **复制引用** — 代码或文件右键 → "Copy Code/File Reference"，把 `@path/file.go#L10-25` 复制到剪贴板
+- **终端支持** — 发送到当前激活的终端 tab，兼容新版 WebStorm/IntelliJ 的新终端引擎
 - **自动打开文件** — Pi 修改的文件自动在编辑器中打开
-- **完成通知** — Pi 处理完成后弹出通知
+- **可配置通知** — 文件修改、Pi 启动/退出、复制引用通知可分别开关
 - **模型配置** — 从 `~/.pi/agent/models.json` 加载模型列表
 
 ## 快捷键
@@ -38,7 +40,8 @@
 - **Pi command** — pi 二进制路径
 - **Extra arguments** — 额外 CLI 参数
 - **Auto-open files** — 是否自动打开修改的文件
-- **Notifications** — 是否显示完成通知
+- **Disable Pi built-in themes** — 勾选时追加 `--no-themes`，让 Pi 跟随 IDE 主题
+- **Notifications** — 文件修改 / Pi 启动退出 / 复制引用 三类通知分别开关
 
 ## 支持的 IDE
 

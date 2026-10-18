@@ -18,9 +18,10 @@
     <ul>
         <li><b>One-click launch</b> from the toolbar</li>
         <li><b>Integrated terminal</b> that opens a dedicated "Pi" tab inside the Terminal tool window</li>
-        <li><b>Send to Pi</b> — select code, right-click, and send file reference (<code>@path/file.go#L10-25</code>) to Pi's input</li>
+        <li><b>Send to Pi</b> — select code, right-click, and send file reference (<code>@path/file.go#L10-25</code>) to the active terminal</li>
+        <li><b>Copy reference</b> — right-click code or a file to copy <code>@path/file.go#L10-25</code> to the clipboard</li>
         <li><b>Auto-open files</b> modified by Pi in the editor</li>
-        <li><b>Completion notifications</b> after Pi finishes processing</li>
+        <li><b>Configurable notifications</b> for file changes, Pi startup/exit and clipboard copies</li>
         <li><b>Flexible configuration</b> for models, thinking levels, and launch options</li>
     </ul>
 
@@ -33,7 +34,7 @@
     </ol>
 
     <h4>Configuration</h4>
-    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, notification behavior, and auto-open options.</p>
+    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, <code>--no-themes</code>, notifications, and auto-open options.</p>
 
     <h3>Keyboard Shortcuts</h3>
     <ul>
@@ -46,6 +47,15 @@
     ]]></description>
 
     <change-notes><![CDATA[
+    <h3>0.1.6</h3>
+    <ul>
+        <li>Send selection/file references to the <b>currently active terminal tab</b>, including a Pi started manually (no extra Pi tab is opened)</li>
+        <li>New actions: <b>Copy Code Reference</b> and <b>Copy File Reference</b> to the clipboard</li>
+        <li><code>--no-themes</code> is now a setting (Settings, Tools, Pi Agent)</li>
+        <li>All notifications are configurable: file changes, Pi startup/exit, clipboard copies</li>
+        <li>Terminal detection now supports both the legacy and the new terminal engines (WebStorm 2025.3+)</li>
+        <li>Project View file references read PSI/navigatable/selected items, so Send/Copy File Reference is enabled again in the new UI</li>
+    </ul>
     <h3>0.1.1</h3>
     <ul>
         <li>Pi now opens as a tab inside the Terminal tool window (alongside Local)</li>
@@ -113,7 +123,7 @@
         <action id="Pi.SendSelection"
                 class="com.piagent.launcher.actions.SendSelectionAction"
                 text="Send to Pi"
-                description="Send selected code reference to Pi"
+                description="Send selected code reference to the active terminal"
                 icon="/icons/pi.svg">
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift L"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
@@ -124,7 +134,26 @@
         <action id="Pi.SendFile"
                 class="com.piagent.launcher.actions.SendFileToPiAction"
                 text="Send to Pi"
-                description="Send file reference to Pi"
+                description="Send file reference to the active terminal"
+                icon="/icons/pi.svg">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+        </action>
+
+        <!-- Copy selection reference to clipboard -->
+        <action id="Pi.CopyCodeReference"
+                class="com.piagent.launcher.actions.CopyCodeReferenceAction"
+                text="Copy Code Reference to Clipboard"
+                description="Copy @path/file.go#L10-25 for the current selection to the clipboard"
+                icon="/icons/pi.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+
+        <!-- Copy file reference(s) to clipboard -->
+        <action id="Pi.CopyFileReference"
+                class="com.piagent.launcher.actions.CopyFileReferenceAction"
+                text="Copy File Reference to Clipboard"
+                description="Copy @path/file.go file reference(s) to the clipboard"
                 icon="/icons/pi.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>

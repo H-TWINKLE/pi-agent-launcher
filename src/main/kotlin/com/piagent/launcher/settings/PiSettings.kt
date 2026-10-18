@@ -22,7 +22,10 @@ class PiSettings : PersistentStateComponent<PiSettings.State> {
         var customModelId: String = "",
         var thinkingLevel: String = "Default",
         var autoOpenFiles: Boolean = true,
+        var disableThemes: Boolean = true,
         var showNotifications: Boolean = true,
+        var showProcessNotifications: Boolean = true,
+        var showCopyNotifications: Boolean = true,
         var shellPath: String = "",
         var extraArgs: String = ""
     )

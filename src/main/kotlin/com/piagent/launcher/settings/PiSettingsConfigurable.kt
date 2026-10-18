@@ -20,7 +20,10 @@ class PiSettingsConfigurable : Configurable {
     private var thinkingLevelCombo: ComboBox<String>? = null
     private var extraArgsField: JBTextField? = null
     private var autoOpenFilesCheckbox: JCheckBox? = null
+    private var disableThemesCheckbox: JCheckBox? = null
     private var showNotificationsCheckbox: JCheckBox? = null
+    private var showProcessNotificationsCheckbox: JCheckBox? = null
+    private var showCopyNotificationsCheckbox: JCheckBox? = null
 
     companion object {
         val THINKING_LEVELS = arrayOf(
@@ -61,7 +64,12 @@ class PiSettingsConfigurable : Configurable {
         }
         extraArgsField = JBTextField(settings.extraArgs)
         autoOpenFilesCheckbox = JCheckBox("Auto-open files modified by Pi", settings.autoOpenFiles)
-        showNotificationsCheckbox = JCheckBox("Show notification when Pi finishes", settings.showNotifications)
+        disableThemesCheckbox = JCheckBox("Disable Pi built-in themes (--no-themes)", settings.disableThemes).apply {
+            toolTipText = "Appends --no-themes so Pi follows the IDE light/dark theme instead of its own themes."
+        }
+        showNotificationsCheckbox = JCheckBox("Notify when Pi modifies files", settings.showNotifications)
+        showProcessNotificationsCheckbox = JCheckBox("Notify on Pi startup, exit and errors", settings.showProcessNotifications)
+        showCopyNotificationsCheckbox = JCheckBox("Notify when a reference is copied", settings.showCopyNotifications)
 
         panel = FormBuilder.createFormBuilder()
             // Model section
@@ -98,7 +106,10 @@ class PiSettingsConfigurable : Configurable {
                 border = JBUI.Borders.emptyTop(4)
             })
             .addComponent(autoOpenFilesCheckbox!!, 1)
+            .addComponent(disableThemesCheckbox!!, 1)
             .addComponent(showNotificationsCheckbox!!, 1)
+            .addComponent(showProcessNotificationsCheckbox!!, 1)
+            .addComponent(showCopyNotificationsCheckbox!!, 1)
 
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -114,22 +125,25 @@ class PiSettingsConfigurable : Configurable {
                 thinkingLevelCombo?.selectedItem != settings.thinkingLevel ||
                 extraArgsField?.text != settings.extraArgs ||
                 autoOpenFilesCheckbox?.isSelected != settings.autoOpenFiles ||
-                showNotificationsCheckbox?.isSelected != settings.showNotifications
+                disableThemesCheckbox?.isSelected != settings.disableThemes ||
+                showNotificationsCheckbox?.isSelected != settings.showNotifications ||
+                showProcessNotificationsCheckbox?.isSelected != settings.showProcessNotifications ||
+                showCopyNotificationsCheckbox?.isSelected != settings.showCopyNotifications
     }
 
     override fun apply() {
-        val settings = PiSettings.getInstance()
-        settings.loadState(
-            PiSettings.State(
-                piCommand = piCommandField?.text ?: "pi",
-                model = modelCombo?.selectedItem as? String ?: "Default",
-                customModelId = customModelField?.text ?: "",
-                thinkingLevel = thinkingLevelCombo?.selectedItem as? String ?: "Default",
-                extraArgs = extraArgsField?.text ?: "",
-                autoOpenFiles = autoOpenFilesCheckbox?.isSelected ?: true,
-                showNotifications = showNotificationsCheckbox?.isSelected ?: true
-            )
-        )
+        // Mutate the existing state so fields not shown in this panel (e.g. shellPath) survive.
+        val settings = PiSettings.getInstance().state
+        settings.piCommand = piCommandField?.text ?: "pi"
+        settings.model = modelCombo?.selectedItem as? String ?: "Default"
+        settings.customModelId = customModelField?.text ?: ""
+        settings.thinkingLevel = thinkingLevelCombo?.selectedItem as? String ?: "Default"
+        settings.extraArgs = extraArgsField?.text ?: ""
+        settings.autoOpenFiles = autoOpenFilesCheckbox?.isSelected ?: true
+        settings.disableThemes = disableThemesCheckbox?.isSelected ?: true
+        settings.showNotifications = showNotificationsCheckbox?.isSelected ?: true
+        settings.showProcessNotifications = showProcessNotificationsCheckbox?.isSelected ?: true
+        settings.showCopyNotifications = showCopyNotificationsCheckbox?.isSelected ?: true
     }
 
     override fun reset() {
@@ -140,7 +154,10 @@ class PiSettingsConfigurable : Configurable {
         thinkingLevelCombo?.selectedItem = settings.thinkingLevel
         extraArgsField?.text = settings.extraArgs
         autoOpenFilesCheckbox?.isSelected = settings.autoOpenFiles
+        disableThemesCheckbox?.isSelected = settings.disableThemes
         showNotificationsCheckbox?.isSelected = settings.showNotifications
+        showProcessNotificationsCheckbox?.isSelected = settings.showProcessNotifications
+        showCopyNotificationsCheckbox?.isSelected = settings.showCopyNotifications
     }
 
     override fun disposeUIResources() {
