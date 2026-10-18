@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.piagent.launcher"
-version = "0.1.7"
+version = "0.1.10"
 
 repositories {
     mavenCentral()

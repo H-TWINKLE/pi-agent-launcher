@@ -95,57 +95,19 @@ class PiTerminalService(private val project: Project) {
 
     /**
      * Create a new tab named "Pi" in the Terminal tool window.
-     * Prefers the new terminal engine (2025.3+); the legacy API is only used on older IDEs.
+     *
+     * Uses the classic terminal engine (same as 0.1.4). The new TerminalView engine
+     * registers a focus-save listener that can deadlock WebStorm 2026.2 together
+     * with the platform write lock, so it is only used for sending to user terminals.
      */
     private fun createTerminalTab(workingDir: String) {
         try {
-            if (hasNewTerminalEngine()) {
-                createNewEngineTab(workingDir)
-                logger.info("Pi terminal tab created (new terminal engine)")
-            } else {
-                createLegacyTab(workingDir)
-                logger.info("Pi terminal tab created (legacy terminal engine)")
-            }
+            createLegacyTab(workingDir)
+            logger.info("Pi terminal tab created (classic terminal engine)")
         } catch (e: Exception) {
             logger.error("Failed to create terminal tab", e)
             throw e
         }
-    }
-
-    private fun hasNewTerminalEngine(): Boolean = try {
-        Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager")
-        true
-    } catch (_: Throwable) {
-        false
-    }
-
-    /**
-     * New terminal engine: TerminalToolWindowTabsManager + TerminalView.
-     * Creating the tab through this API avoids mixing legacy widgets into the
-     * reworked terminal UI, which can block the EDT.
-     */
-    private fun createNewEngineTab(workingDir: String) {
-        val managerClass = Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager")
-        val builderClass = Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabBuilder")
-        val tabClass = Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab")
-
-        val manager = managerClass.getMethod("getInstance", Project::class.java).invoke(null, project)
-        val builder = managerClass.getMethod("createTabBuilder").invoke(manager)
-
-        builderClass.getMethod("workingDirectory", String::class.java).invoke(builder, workingDir)
-        builderClass.getMethod("tabName", String::class.java).invoke(builder, TAB_NAME)
-        builderClass.getMethod("requestFocus", Boolean::class.javaPrimitiveType).invoke(builder, true)
-
-        val tab = builderClass.getMethod("createTab").invoke(builder)
-            ?: throw IllegalStateException("terminal tab was not created")
-        val view = tabClass.getMethod("getView").invoke(tab)
-            ?: throw IllegalStateException("terminal view is missing")
-        val content = tabClass.getMethod("getContent").invoke(tab) as? Content
-
-        terminalContent.set(content)
-        terminalComponent.set(widgetComponent(view) as? JComponent)
-        sendTextFn = { text, execute -> sendToWidget(view, text, execute) }
-        // requestFocus(true) already selects the new tab.
     }
 
     @Suppress("DEPRECATION")

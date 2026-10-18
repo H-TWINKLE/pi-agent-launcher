@@ -47,7 +47,7 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h3>0.1.7</h3>
+    <h3>0.1.10</h3>
     <ul>
         <li>Send selection/file references to the <b>currently active terminal tab</b>, including a Pi started manually (no extra Pi tab is opened)</li>
         <li>New actions: <b>Copy Code Reference</b> and <b>Copy File Reference</b> to the clipboard</li>
@@ -55,7 +55,7 @@
         <li>All notifications are configurable: file changes, Pi startup/exit, clipboard copies</li>
         <li>Terminal detection now supports both the legacy and the new terminal engines (WebStorm 2025.3+)</li>
         <li>Project View file references read PSI/navigatable/selected items, so Send/Copy File Reference is enabled again in the new UI</li>
-        <li>Pi tabs are created through the new terminal engine, avoiding a WebStorm freeze caused by mixing a legacy terminal widget into the reworked terminal UI</li>
+        <li>Test build: the Pi tab is created with the classic terminal engine again (0.1.4 behavior), because the new TerminalView engine's focus-save listener can deadlock WebStorm 2026.2; sending to new-engine terminals is unchanged</li>
     </ul>
     <h3>0.1.1</h3>
     <ul>
