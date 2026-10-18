@@ -28,7 +28,9 @@ class PiTerminalService(private val project: Project) {
 
     private val logger = Logger.getInstance(PiTerminalService::class.java)
     private val terminalComponent = AtomicReference<JComponent?>(null)
-    private var sendTextFn: ((String, Boolean) -> Unit)? = null
+    private val terminalContent = AtomicReference<Content?>(null)
+    /** Returns true when the text was accepted by the terminal. */
+    private var sendTextFn: ((String, Boolean) -> Boolean)? = null
     private var isInitialized = false
 
     /** Input queued while the Pi tab is still booting: (text, execute). */
@@ -83,6 +85,9 @@ class PiTerminalService(private val project: Project) {
      * Check if the Pi terminal tab is still alive.
      */
     private fun isTerminalAlive(): Boolean {
+        terminalContent.get()?.let { content ->
+            return content.manager != null
+        }
         val component = terminalComponent.get() ?: return false
         // Check if component is still attached to a parent (tab exists even if not focused)
         return component.parent != null
@@ -90,40 +95,96 @@ class PiTerminalService(private val project: Project) {
 
     /**
      * Create a new tab named "Pi" in the Terminal tool window.
+     * Prefers the new terminal engine (2025.3+); the legacy API is only used on older IDEs.
      */
-    @Suppress("DEPRECATION")
     private fun createTerminalTab(workingDir: String) {
         try {
-            // Use TerminalToolWindowManager to create a tab in the Terminal window
-            val managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager")
-            val getInstanceMethod = managerClass.getMethod("getInstance", Project::class.java)
-            val manager = getInstanceMethod.invoke(null, project)
-
-            // createLocalShellWidget(workingDir, tabName) -> ShellTerminalWidget
-            val createMethod = managerClass.getMethod(
-                "createLocalShellWidget",
-                String::class.java,
-                String::class.java
-            )
-            val widget = createMethod.invoke(manager, workingDir, "Pi")
-
-            // Get component
-            val component = widget.javaClass.getMethod("getComponent").invoke(widget) as JComponent
-            terminalComponent.set(component)
-
-            // Store sendText function for the terminal created by this plugin
-            sendTextFn = { text, execute -> sendToWidget(widget, text, execute) }
-
-            // Show and focus the Terminal tool window
-            focusPiTab()
-
-            // Monitor terminal process for unexpected exit
-            monitorProcess(widget)
-
-            logger.info("Pi terminal tab created in Terminal window")
+            if (hasNewTerminalEngine()) {
+                createNewEngineTab(workingDir)
+                logger.info("Pi terminal tab created (new terminal engine)")
+            } else {
+                createLegacyTab(workingDir)
+                logger.info("Pi terminal tab created (legacy terminal engine)")
+            }
         } catch (e: Exception) {
             logger.error("Failed to create terminal tab", e)
             throw e
+        }
+    }
+
+    private fun hasNewTerminalEngine(): Boolean = try {
+        Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager")
+        true
+    } catch (_: Throwable) {
+        false
+    }
+
+    /**
+     * New terminal engine: TerminalToolWindowTabsManager + TerminalView.
+     * Creating the tab through this API avoids mixing legacy widgets into the
+     * reworked terminal UI, which can block the EDT.
+     */
+    private fun createNewEngineTab(workingDir: String) {
+        val managerClass = Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager")
+        val builderClass = Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabBuilder")
+        val tabClass = Class.forName("com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab")
+
+        val manager = managerClass.getMethod("getInstance", Project::class.java).invoke(null, project)
+        val builder = managerClass.getMethod("createTabBuilder").invoke(manager)
+
+        builderClass.getMethod("workingDirectory", String::class.java).invoke(builder, workingDir)
+        builderClass.getMethod("tabName", String::class.java).invoke(builder, TAB_NAME)
+        builderClass.getMethod("requestFocus", Boolean::class.javaPrimitiveType).invoke(builder, true)
+
+        val tab = builderClass.getMethod("createTab").invoke(builder)
+            ?: throw IllegalStateException("terminal tab was not created")
+        val view = tabClass.getMethod("getView").invoke(tab)
+            ?: throw IllegalStateException("terminal view is missing")
+        val content = tabClass.getMethod("getContent").invoke(tab) as? Content
+
+        terminalContent.set(content)
+        terminalComponent.set(widgetComponent(view) as? JComponent)
+        sendTextFn = { text, execute -> sendToWidget(view, text, execute) }
+        // requestFocus(true) already selects the new tab.
+    }
+
+    @Suppress("DEPRECATION")
+    private fun createLegacyTab(workingDir: String) {
+        // Use TerminalToolWindowManager to create a tab in the Terminal window
+        val managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager")
+        val getInstanceMethod = managerClass.getMethod("getInstance", Project::class.java)
+        val manager = getInstanceMethod.invoke(null, project)
+
+        // createLocalShellWidget(workingDir, tabName) -> ShellTerminalWidget
+        val createMethod = managerClass.getMethod(
+            "createLocalShellWidget",
+            String::class.java,
+            String::class.java
+        )
+        val widget = createMethod.invoke(manager, workingDir, TAB_NAME)
+
+        // Get component
+        val component = widget.javaClass.getMethod("getComponent").invoke(widget) as JComponent
+        terminalComponent.set(component)
+        terminalContent.set(findContentByName(TAB_NAME))
+
+        // Store sendText function for the terminal created by this plugin
+        sendTextFn = { text, execute -> sendToWidget(widget, text, execute) }
+
+        // Show and focus the Terminal tool window
+        focusPiTab()
+
+        // Monitor terminal process for unexpected exit
+        monitorProcess(widget)
+    }
+
+    private fun findContentByName(name: String): Content? {
+        return try {
+            val toolWindow = terminalToolWindow() ?: return null
+            val contentManager = contentManagerIfCreated(toolWindow) ?: return null
+            contentManager.contents.firstOrNull { it.displayName == name }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -173,8 +234,7 @@ class PiTerminalService(private val project: Project) {
                 addActionListener {
                     attempts++
                     val fn = sendTextFn
-                    if (fn != null) {
-                        fn(command, true)
+                    if (fn != null && fn(command, true)) {
                         stop()
                         schedulePendingInputFlush()
                     } else if (attempts > 20) {
@@ -217,15 +277,25 @@ class PiTerminalService(private val project: Project) {
         }
     }
 
-    /** Replay queued reference text once `pi` has had time to take over the terminal. */
-    private fun schedulePendingInputFlush() {
+    /** Replay queued reference text once the terminal is ready (retries while it boots). */
+    private fun schedulePendingInputFlush(attempt: Int = 0) {
         if (pendingInput.get() == null) return
-        val timer = Timer(800, null)
+        if (attempt > 40) {
+            logger.warn("Pi terminal never became ready; dropping queued input")
+            pendingInput.set(null)
+            return
+        }
+        val timer = Timer(500, null)
         timer.isRepeats = false
         timer.addActionListener {
-            val (text, execute) = pendingInput.getAndSet(null) ?: return@addActionListener
-            sendTextFn?.invoke(text, execute)
-            focusPiTab()
+            val pending = pendingInput.get() ?: return@addActionListener
+            val fn = sendTextFn
+            if (fn != null && fn(pending.first, pending.second)) {
+                pendingInput.compareAndSet(pending, null)
+                focusPiTab()
+            } else {
+                schedulePendingInputFlush(attempt + 1)
+            }
         }
         timer.start()
     }
@@ -245,8 +315,12 @@ class PiTerminalService(private val project: Project) {
         }
 
         sendTextFn?.let { fn ->
-            fn(text, true)
-            focusPiTab()
+            if (fn(text, true)) {
+                focusPiTab()
+                return
+            }
+            pendingInput.set(text to true)
+            schedulePendingInputFlush()
             return
         }
 
@@ -282,8 +356,12 @@ class PiTerminalService(private val project: Project) {
 
         // The plugin-owned Pi tab exists but is not the active tab.
         sendTextFn?.let { fn ->
-            fn(text, false)
-            focusPiTab()
+            if (fn(text, false)) {
+                focusPiTab()
+                return true
+            }
+            pendingInput.set(text to false)
+            schedulePendingInputFlush()
             return true
         }
 
@@ -541,18 +619,37 @@ class PiTerminalService(private val project: Project) {
     }
 
     /** Text injection for the new terminal engine view. */
-    private fun sendViaTerminalView(view: Any, text: String, execute: Boolean): Boolean = try {
-        if (execute) {
-            val builder = view.javaClass.getMethod("createSendTextBuilder").invoke(view)
-            builder.javaClass.getMethod("shouldExecute").invoke(builder)
-            builder.javaClass.getMethod("send", String::class.java).invoke(builder, text)
-        } else {
-            view.javaClass.getMethod("sendText", String::class.java).invoke(view, text)
+    private fun sendViaTerminalView(view: Any, text: String, execute: Boolean): Boolean {
+        if (!isTerminalViewRunning(view)) return false
+
+        return try {
+            val viewClass = terminalViewClass
+                ?: Class.forName("com.intellij.terminal.frontend.view.TerminalView")
+            if (execute) {
+                val builder = viewClass.getMethod("createSendTextBuilder").invoke(view)
+                val builderClass = Class.forName("org.jetbrains.plugins.terminal.view.TerminalSendTextBuilder")
+                builderClass.getMethod("shouldExecute").invoke(builder)
+                builderClass.getMethod("send", String::class.java).invoke(builder, text)
+            } else {
+                viewClass.getMethod("sendText", String::class.java).invoke(view, text)
+            }
+            true
+        } catch (e: Exception) {
+            logger.warn("TerminalView injection failed: ${e.message}")
+            false
         }
-        true
-    } catch (e: Exception) {
-        logger.warn("TerminalView injection failed: ${e.message}")
-        false
+    }
+
+    /** The new engine must have started its session before text can be sent. */
+    private fun isTerminalViewRunning(view: Any): Boolean {
+        return try {
+            val stateFlow = view.javaClass.getMethod("getSessionState").invoke(view)
+            val stateFlowClass = Class.forName("kotlinx.coroutines.flow.StateFlow")
+            val state = stateFlowClass.getMethod("getValue").invoke(stateFlow)
+            state != null && state.javaClass.simpleName.contains("Running", ignoreCase = true)
+        } catch (_: Exception) {
+            true
+        }
     }
 
     private fun hasMethod(target: Any, name: String, parameterCount: Int): Boolean =
@@ -583,6 +680,7 @@ class PiTerminalService(private val project: Project) {
      */
     fun reset() {
         terminalComponent.set(null)
+        terminalContent.set(null)
         sendTextFn = null
         isInitialized = false
         pendingInput.set(null)
@@ -652,6 +750,8 @@ class PiTerminalService(private val project: Project) {
     }
 
     companion object {
+        private const val TAB_NAME = "Pi"
+
         fun getInstance(project: Project): PiTerminalService = project.service()
     }
 }
