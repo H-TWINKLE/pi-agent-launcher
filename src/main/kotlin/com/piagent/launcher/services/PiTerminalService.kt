@@ -3,6 +3,7 @@ package com.piagent.launcher.services
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
@@ -14,6 +15,7 @@ import com.intellij.ui.content.ContentManager
 import com.piagent.launcher.settings.PiSettings
 import java.awt.Component
 import java.awt.Container
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JComponent
 import javax.swing.SwingUtilities
@@ -29,6 +31,18 @@ class PiTerminalService(private val project: Project) {
     private val logger = Logger.getInstance(PiTerminalService::class.java)
     private val terminalComponent = AtomicReference<JComponent?>(null)
     private val terminalContent = AtomicReference<Content?>(null)
+    /** The widget created by this plugin, used to tell when its session is really up. */
+    private val terminalWidget = AtomicReference<Any?>(null)
+
+    /** Cached result of the (expensive) process table scan, refreshed off the EDT. */
+    private val piProcessRunning = AtomicBoolean(false)
+    private val processScanInFlight = AtomicBoolean(false)
+    /** Callers waiting for the running scan, guarded by [processConsumersLock]. */
+    private val processConsumers = ArrayList<(Boolean) -> Unit>()
+    private val processConsumersLock = Any()
+
+    @Volatile
+    private var lastProcessScanAt = 0L
     /** Returns true when the text was accepted by the terminal. */
     private var sendTextFn: ((String, Boolean) -> Boolean)? = null
     private var isInitialized = false
@@ -86,7 +100,7 @@ class PiTerminalService(private val project: Project) {
      */
     private fun isTerminalAlive(): Boolean {
         terminalContent.get()?.let { content ->
-            return content.manager != null
+            return content.isValid && content.manager != null
         }
         val component = terminalComponent.get() ?: return false
         // Check if component is still attached to a parent (tab exists even if not focused)
@@ -117,24 +131,35 @@ class PiTerminalService(private val project: Project) {
         val getInstanceMethod = managerClass.getMethod("getInstance", Project::class.java)
         val manager = getInstanceMethod.invoke(null, project)
 
-        // createLocalShellWidget(workingDir, tabName) -> ShellTerminalWidget
-        val createMethod = managerClass.getMethod(
-            "createLocalShellWidget",
-            String::class.java,
-            String::class.java
-        )
-        val widget = createMethod.invoke(manager, workingDir, TAB_NAME)
+        // createLocalShellWidget(workingDir, tabName, requestFocus) with focus disabled.
+        val widget = try {
+            managerClass.getMethod(
+                "createLocalShellWidget",
+                String::class.java,
+                String::class.java,
+                Boolean::class.javaPrimitiveType
+            ).invoke(manager, workingDir, TAB_NAME, false)
+        } catch (_: NoSuchMethodException) {
+            managerClass.getMethod(
+                "createLocalShellWidget",
+                String::class.java,
+                String::class.java
+            ).invoke(manager, workingDir, TAB_NAME)
+        }
 
         // Get component
         val component = widget.javaClass.getMethod("getComponent").invoke(widget) as JComponent
         terminalComponent.set(component)
+        terminalWidget.set(widget)
         terminalContent.set(findContentByName(TAB_NAME))
 
         // Store sendText function for the terminal created by this plugin
         sendTextFn = { text, execute -> sendToWidget(widget, text, execute) }
 
-        // Show and focus the Terminal tool window
-        focusPiTab()
+        // Select the Pi tab and bring the Terminal tool window up. A fresh
+        // createLocalShellWidget does not show the window by itself, so a closed Terminal
+        // window would stay closed and the user would see nothing happen.
+        showPiTab()
 
         // Monitor terminal process for unexpected exit
         monitorProcess(widget)
@@ -165,30 +190,91 @@ class PiTerminalService(private val project: Project) {
 
     /** Show the Terminal tool window and select the Pi tab created by this plugin. */
     private fun focusPiTab() {
+        showPiTab()
+    }
+
+    /**
+     * Bring the Terminal tool window up with the Pi tab selected and focused.
+     *
+     * `ToolWindow.show()` is not enough here: it neither activates an already open window nor
+     * surfaces one that the terminal plugin just created without showing. `activate` does both,
+     * which is also what makes the window appear when the user clicks the toolbar icon while the
+     * Terminal window is closed.
+     */
+    private fun showPiTab() {
         val toolWindow = terminalToolWindow() ?: return
-        toolWindow.show {
-            val contentManager = toolWindow.contentManager
-            for (content in contentManager.contents) {
-                if (content.displayName == "Pi") {
-                    contentManager.setSelectedContent(content, true)
-                    break
-                }
+        // When the window is already open, select first so activation does not briefly focus
+        // whichever tab was selected before.
+        selectPiTab(toolWindow)
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            try {
+                // The callback runs after the window is activated, so the content manager and
+                // the newly created tab exist by then.
+                toolWindow.activate({
+                    selectPiTab(toolWindow)
+                    terminalComponent.get()?.requestFocusInWindow()
+                }, true)
+            } catch (e: Exception) {
+                logger.warn("Failed to show the Terminal window for Pi: ${e.message}")
             }
-            terminalComponent.get()?.requestFocusInWindow()
         }
+    }
+
+    /** Select the Pi tab; a no-op while the Terminal window content is not created yet. */
+    private fun selectPiTab(toolWindow: ToolWindow) {
+        try {
+            val content = terminalContent.get()?.takeIf { it.isValid }
+                ?: terminalWidget.get()?.let { contentForWidget(it) }
+                ?: findContentByName(TAB_NAME)
+                ?: return
+            terminalContent.set(content)
+            toolWindow.contentManager.setSelectedContent(content, true)
+        } catch (e: Exception) {
+            logger.warn("Failed to select the Pi tab: ${e.message}")
+        }
+    }
+
+    /**
+     * Content hosting a terminal widget (`TerminalToolWindowManager.getContainer(widget).content`).
+     * More reliable than matching the tab title, which needs the content manager to exist already.
+     */
+    private fun contentForWidget(widget: Any): Content? = try {
+        val managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager")
+        val manager = managerClass.getMethod("getInstance", Project::class.java).invoke(null, project)
+        val getContainer = managerClass.methods.firstOrNull { it.name == "getContainer" && it.parameterCount == 1 }
+        val container = getContainer?.invoke(manager, widget)
+        container?.javaClass?.methods
+            ?.firstOrNull { it.name == "getContent" && it.parameterCount == 0 }
+            ?.invoke(container) as? Content
+    } catch (_: Exception) {
+        null
     }
 
     /** Bring the Terminal tool window up; when [focusWidget] is given it also gets the focus. */
     private fun showTerminalWindow(focusWidget: Any? = null) {
-        terminalToolWindow()?.show {
-            if (focusWidget != null) requestFocus(focusWidget)
+        val toolWindow = terminalToolWindow() ?: return
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            try {
+                toolWindow.activate({ if (focusWidget != null) requestFocus(focusWidget) }, true)
+            } catch (e: Exception) {
+                logger.warn("Failed to activate the Terminal window: ${e.message}")
+            }
         }
     }
 
+    /**
+     * Send the launch command once the shell session is really up.
+     *
+     * The widget exists right after creation, but the PTY/shell process is started
+     * asynchronously afterwards. Injecting before that loses the text at best; on the new
+     * terminal engine the injection can also wait for the session on the EDT and freeze the IDE.
+     */
     private fun startPiWithDelay() {
         val command = buildPiCommand()
 
-        // Poll until terminal is ready, then send command
+        // Poll until the terminal owns a live session, then send the command.
         var attempts = 0
         val timer = object : Timer(300, null) {
             init {
@@ -196,17 +282,55 @@ class PiTerminalService(private val project: Project) {
                 addActionListener {
                     attempts++
                     val fn = sendTextFn
-                    if (fn != null && fn(command, true)) {
+                    if (fn != null && isTerminalReady(terminalWidget.get(), attempts) && fn(command, true)) {
                         stop()
                         schedulePendingInputFlush()
-                    } else if (attempts > 20) {
-                        logger.warn("Terminal not ready after 6s")
+                    } else if (attempts > 40) {
+                        logger.warn("Terminal not ready after 12s; Pi was not started")
                         stop()
                     }
                 }
             }
         }
         timer.start()
+    }
+
+    /**
+     * True when the given widget already owns a live session.
+     * Widget types that do not expose a connector fall back after a short grace period.
+     */
+    private fun isTerminalReady(widget: Any?, attempts: Int): Boolean {
+        if (widget == null) return false
+        if (terminalViewClass?.isInstance(widget) == true) {
+            return isTerminalViewRunning(widget)
+        }
+
+        val connector = try {
+            widget.javaClass.getMethod("getTtyConnector").invoke(widget)
+        } catch (_: Exception) {
+            null
+        } ?: return attempts > READY_FALLBACK_ATTEMPTS
+
+        return try {
+            connector.javaClass.getMethod("isConnected").invoke(connector) as? Boolean ?: true
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    /** Connection state of a widget's TTY; null when the widget can no longer be inspected. */
+    private fun isTerminalConnected(widget: Any): Boolean? {
+        val connector = try {
+            widget.javaClass.getMethod("getTtyConnector").invoke(widget)
+        } catch (_: Exception) {
+            return null
+        } ?: return null
+
+        return try {
+            connector.javaClass.getMethod("isConnected").invoke(connector) as? Boolean
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun buildPiCommand(): String {
@@ -232,11 +356,31 @@ class PiTerminalService(private val project: Project) {
                 append(" --no-themes")
             }
 
+            // The bridge flag goes before the user's extra arguments so a stray `--` in them
+            // cannot turn it into a positional argument.
+            append(buildBridgeArgs())
+
             if (settings.extraArgs.isNotBlank()) {
                 append(" ")
                 append(settings.extraArgs)
             }
         }
+    }
+
+    /**
+     * Installs the bundled pi extension and returns the `--ide-bridge=` argument for it.
+     *
+     * The extension lives in pi's own extension directory and is inert unless this flag is passed,
+     * so only sessions started from this IDE report file changes back.
+     */
+    private fun buildBridgeArgs(): String {
+        val settings = PiSettings.getInstance().state
+        if (!settings.autoOpenFiles && !settings.showNotifications) return ""
+
+        val extension = PiBridgeInstaller.install() ?: return ""
+        val url = PiBridgeServer.getInstance().url() ?: return ""
+        logger.info("Pi IDE bridge ready: ${extension.toAbsolutePath()} -> $url")
+        return " --ide-bridge=$url"
     }
 
     /** Replay queued reference text once the terminal is ready (retries while it boots). */
@@ -286,15 +430,20 @@ class PiTerminalService(private val project: Project) {
             return
         }
 
-        val hasTabs = hasTerminalTabs()
-        val piRunning = isPiProcessRunning()
-        if (hasTabs || piRunning) {
-            logger.warn("Cannot reach a Pi terminal (terminalTabs=$hasTabs, piProcess=$piRunning)")
+        if (hasTerminalTabs()) {
+            logger.warn("Cannot reach a Pi terminal of this IDE (terminal tabs exist but none is usable)")
             return
         }
 
-        pendingInput.set(text to true)
-        launch()
+        // Only start Pi when no Pi runs somewhere else; the check runs in the background.
+        resolvePiProcessState { piRunning ->
+            if (piRunning) {
+                logger.warn("Pi already runs outside this IDE; cannot type into it")
+                return@resolvePiProcessState
+            }
+            pendingInput.set(text to true)
+            launch()
+        }
     }
 
     /**
@@ -327,17 +476,22 @@ class PiTerminalService(private val project: Project) {
             return true
         }
 
-        // Never spawn a second Pi when one is already running or terminal tabs exist.
-        val hasTabs = hasTerminalTabs()
-        val piRunning = isPiProcessRunning()
-        if (hasTabs || piRunning) {
-            logger.warn("Cannot reach a Pi terminal (terminalTabs=$hasTabs, piProcess=$piRunning)")
+        // Never spawn a second Pi when this IDE already holds terminal tabs.
+        if (hasTerminalTabs()) {
+            logger.warn("Cannot reach a Pi terminal of this IDE (terminal tabs exist but none is usable)")
             return false
         }
 
-        // No terminal at all: start Pi and replay the text once it is ready.
-        pendingInput.set(text to false)
-        launch()
+        // No terminal at all: start Pi and replay the text once it is ready. The process check
+        // runs in the background; a Pi from an external terminal is left untouched.
+        resolvePiProcessState { piRunning ->
+            if (piRunning) {
+                logger.warn("Pi already runs outside this IDE; cannot type into it")
+                return@resolvePiProcessState
+            }
+            pendingInput.set(text to false)
+            launch()
+        }
         return true
     }
 
@@ -463,29 +617,62 @@ class PiTerminalService(private val project: Project) {
     }
 
     /**
-     * Best-effort check for a Pi process that this plugin cannot type into,
-     * e.g. Pi started in an external terminal. Prevents spawning a second Pi.
+     * Resolve whether a Pi process exists somewhere else, without blocking the caller.
+     *
+     * The scan walks the whole process table and reads every command line, which takes seconds on
+     * Windows, so it never runs on the EDT. A fresh cached value is delivered immediately; a stale
+     * one triggers a background scan whose result reaches [consumer] later on the EDT.
      */
-    private fun isPiProcessRunning(): Boolean = try {
-        ProcessHandle.allProcesses().anyMatch { handle ->
-            val commandLine = handle.info().commandLine().orElse("")
-            looksLikePiCommand(commandLine)
+    private fun resolvePiProcessState(consumer: (Boolean) -> Unit) {
+        val now = System.currentTimeMillis()
+        if (lastProcessScanAt != 0L && now - lastProcessScanAt <= PROCESS_SCAN_CACHE_MS) {
+            consumer(piProcessRunning.get())
+            return
         }
-    } catch (e: Exception) {
-        logger.warn("Failed to inspect running processes: ${e.message}")
-        false
+
+        // A scan already running serves this request too, so no caller ever gets a stale answer.
+        synchronized(processConsumersLock) { processConsumers.add(consumer) }
+        if (!processScanInFlight.compareAndSet(false, true)) return
+
+        lastProcessScanAt = now
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val running = try {
+                scanForPiProcess()
+            } catch (e: Exception) {
+                logger.warn("Failed to inspect running processes: ${e.message}")
+                false
+            } finally {
+                processScanInFlight.set(false)
+            }
+            piProcessRunning.set(running)
+
+            val consumers = synchronized(processConsumersLock) {
+                ArrayList(processConsumers).also { processConsumers.clear() }
+            }
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                consumers.forEach { it(running) }
+            }
+        }
+    }
+
+    private fun scanForPiProcess(): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->
+        looksLikePiCommand(handle.info().commandLine().orElse(""))
     }
 
     private fun looksLikePiCommand(commandLine: String): Boolean {
         if (commandLine.isBlank()) return false
         val lower = commandLine.lowercase()
+        // The npm-installed CLI runs as `node .../pi-coding-agent/...`.
         if (lower.contains("pi-coding-agent")) return true
-        return lower.split(' ', '\t', '"', '\'').any { token ->
-            when (token.substringAfterLast('/').substringAfterLast('\\')) {
-                "pi", "pi.exe", "pi.cmd", "pi.ps1", "pi.js", "pi.mjs" -> true
-                else -> false
-            }
-        }
+
+        // Only the executable itself counts: matching any argument would hit unrelated processes.
+        val executable = lower.split(' ', '\t', '"', '\'')
+            .firstOrNull { it.isNotBlank() }
+            ?.substringAfterLast('/')
+            ?.substringAfterLast('\\')
+            ?: return false
+        return executable in PI_EXECUTABLES
     }
 
     private fun findWidgetByContent(content: Content): Any? = try {
@@ -642,6 +829,7 @@ class PiTerminalService(private val project: Project) {
      */
     fun reset() {
         terminalComponent.set(null)
+        terminalWidget.set(null)
         terminalContent.set(null)
         sendTextFn = null
         isInitialized = false
@@ -662,23 +850,27 @@ class PiTerminalService(private val project: Project) {
      * Monitor the terminal process. If it exits unexpectedly, offer to restart.
      */
     private fun monitorProcess(widget: Any) {
+        var disconnectedChecks = 0
         val checkTimer = object : Timer(2000, null) {
             init {
                 isRepeats = true
                 addActionListener {
-                    try {
-                        val connector = widget.javaClass.getMethod("getTtyConnector").invoke(widget)
-                        if (connector != null) {
-                            val isConnected = connector.javaClass.getMethod("isConnected").invoke(connector) as Boolean
-                            if (!isConnected && isInitialized) {
-                                stop()
-                                handleProcessExit()
-                            }
-                        }
-                    } catch (_: Exception) {
-                        // Widget disposed, stop monitoring
+                    val connected = isTerminalConnected(widget)
+                    if (connected == null) {
+                        // The widget is gone (tab closed/disposed), stop monitoring.
                         stop()
+                        return@addActionListener
                     }
+                    if (connected) {
+                        disconnectedChecks = 0
+                        return@addActionListener
+                    }
+                    // One miss happens while a tab is detached or a shell restarts,
+                    // so only a repeat means Pi really exited.
+                    disconnectedChecks++
+                    if (disconnectedChecks < DISCONNECT_CHECKS_BEFORE_EXIT) return@addActionListener
+                    stop()
+                    if (isInitialized) handleProcessExit()
                 }
             }
         }
@@ -713,6 +905,16 @@ class PiTerminalService(private val project: Project) {
 
     companion object {
         private const val TAB_NAME = "Pi"
+
+        /** Attempts (300 ms each) before a widget without a connector is typed into anyway. */
+        private const val READY_FALLBACK_ATTEMPTS = 10
+
+        /** How long a process table scan result is considered fresh. */
+        private const val PROCESS_SCAN_CACHE_MS = 5_000L
+
+        private const val DISCONNECT_CHECKS_BEFORE_EXIT = 2
+
+        private val PI_EXECUTABLES = setOf("pi", "pi.exe", "pi.cmd", "pi.ps1", "pi.js", "pi.mjs")
 
         fun getInstance(project: Project): PiTerminalService = project.service()
     }

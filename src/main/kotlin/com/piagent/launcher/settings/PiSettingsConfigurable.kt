@@ -63,7 +63,9 @@ class PiSettingsConfigurable : Configurable {
             preferredSize = java.awt.Dimension(400, preferredSize.height)
         }
         extraArgsField = JBTextField(settings.extraArgs)
-        autoOpenFilesCheckbox = JCheckBox("Auto-open files modified by Pi", settings.autoOpenFiles)
+        autoOpenFilesCheckbox = JCheckBox("Auto-open files modified by Pi", settings.autoOpenFiles).apply {
+            toolTipText = "Pi reports its file changes through a small bridge extension it loads on start."
+        }
         disableThemesCheckbox = JCheckBox("Disable Pi built-in themes (--no-themes)", settings.disableThemes).apply {
             toolTipText = "Appends --no-themes so Pi follows the IDE light/dark theme instead of its own themes."
         }

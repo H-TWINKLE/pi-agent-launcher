@@ -1,7 +1,6 @@
 package com.piagent.launcher.actions
 
 import com.piagent.launcher.references.PiReference
-import com.piagent.launcher.services.PiDiffWatcher
 import com.piagent.launcher.services.PiTerminalService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -22,10 +21,6 @@ class SendSelectionAction : AnAction(), DumbAware {
 
         val reference = PiReference.codeReference(project, file, editor)
 
-        // Start diff watching so Pi's edits can be previewed
-        val diffWatcher = PiDiffWatcher.getInstance(project)
-        diffWatcher.snapshotFile(file.path)
-        diffWatcher.startWatching()
 
         // Send to the currently active terminal tab; launches Pi when none exists
         val service = PiTerminalService.getInstance(project)

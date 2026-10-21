@@ -1,6 +1,5 @@
 package com.piagent.launcher.actions
 
-import com.piagent.launcher.services.PiFileWatcher
 import com.piagent.launcher.services.PiTerminalService
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -14,7 +13,6 @@ class LaunchPiAction : AnAction() {
         val project = e.project ?: return
         val service = PiTerminalService.getInstance(project)
         service.launch()
-        PiFileWatcher.getInstance(project).startWatching()
     }
 
     override fun update(e: AnActionEvent) {
