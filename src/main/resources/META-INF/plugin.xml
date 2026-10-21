@@ -20,8 +20,7 @@
         <li><b>Integrated terminal</b> that opens a dedicated "Pi" tab inside the Terminal tool window</li>
         <li><b>Send to Pi</b> — select code, right-click, and send file reference (<code>@path/file.go#L10-25</code>) to the active terminal</li>
         <li><b>Copy reference</b> — right-click code or a file to copy <code>@path/file.go#L10-25</code> to the clipboard</li>
-        <li><b>Auto-open files</b> — files Pi reports as modified open in the editor. The list comes from a bundled pi extension (no project-wide file watching)</li>
-        <li><b>Configurable notifications</b> for Pi file changes, startup/exit and clipboard copies</li>
+        <li><b>Configurable notifications</b> for Pi startup/exit and clipboard copies</li>
         <li><b>Flexible configuration</b> for models, thinking levels, and launch options</li>
     </ul>
 
@@ -34,7 +33,7 @@
     </ol>
 
     <h4>Configuration</h4>
-    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, <code>--no-themes</code>, notification and auto-open options.</p>
+    <p>Open <b>Settings, Tools, Pi Agent</b> to pick the model, thinking level, <code>--no-themes</code> and notification options.</p>
 
     <h3>Keyboard Shortcuts</h3>
     <ul>
@@ -47,18 +46,17 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h3>0.1.12</h3>
+    <h3>0.1.13</h3>
     <ul>
         <li>Send selection/file references to the <b>currently active terminal tab</b>, including a Pi started manually (no extra Pi tab is opened)</li>
         <li>New actions: <b>Copy Code Reference</b> and <b>Copy File Reference</b> to the clipboard</li>
         <li><code>--no-themes</code> is now a setting (Settings, Tools, Pi Agent)</li>
-        <li>All notifications are configurable: file changes, Pi startup/exit, clipboard copies</li>
+        <li>Notifications are configurable: Pi startup/exit and clipboard copies</li>
         <li>Terminal detection now supports both the legacy and the new terminal engines (WebStorm 2025.3+)</li>
         <li>Project View file references read PSI/navigatable/selected items, so Send/Copy File Reference is enabled again in the new UI</li>
         <li>Test build: the Pi tab is created with the classic engine and <b>without stealing focus</b> (<code>requestFocus=false</code>), so the terminal "save all documents on focus" path cannot deadlock the EDT; open the Terminal window or click the tab to interact</li>
-        <li><b>Fixed intermittent IDE freezes after launching Pi from the toolbar</b>: the project-wide file watcher (and its VFS-listener editor opening) is gone, the launch command is typed only after the shell session is really up, and the Pi process scan no longer runs on the EDT</li>
-        <li><b>File-change tracking is back, and exact</b>: the plugin ships a small pi extension that reports every file a tool call modifies. It is installed to <code>~/.pi/agent/extensions/pi-ide-bridge.ts</code>, is inert unless Pi was started from the IDE, and is only ever replaced by a <b>newer</b> bundled version</li>
-        <li>Concurrent Pi instances (or several IDE windows) are counted per pi session, so "Pi modified N files" no longer mixes the work of two sessions</li>
+        <li><b>Lite build</b>: same terminal work as 0.1.12, but without the file-change bridge (no auto-open and no "Pi modified N files" notification). Use 0.1.12 if you want those</li>
+        <li><b>Fixed intermittent IDE freezes after launching Pi from the toolbar</b>: file-change watching (auto-open and the "Pi modified N files" notification) is removed, the launch command is typed only after the shell session is really up, and the Pi process scan no longer runs on the EDT</li>
     </ul>
     <h3>0.1.1</h3>
     <ul>
@@ -83,8 +81,6 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="com.piagent.launcher.services.PiTerminalService"/>
-        <projectService serviceImplementation="com.piagent.launcher.services.PiFileTracker"/>
-        <applicationService serviceImplementation="com.piagent.launcher.services.PiBridgeServer"/>
 
         <applicationService serviceImplementation="com.piagent.launcher.settings.PiSettings"/>
 

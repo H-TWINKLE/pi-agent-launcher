@@ -12,8 +12,7 @@
 - **发送选区** — 选中代码 → 右键 → "Send to Pi"，自动插入 `@path/file.go#L10-25` 到当前激活的终端 tab
 - **复制引用** — 代码或文件右键 → "Copy Code/File Reference"，把 `@path/file.go#L10-25` 复制到剪贴板
 - **终端支持** — 发送到当前激活的终端 tab，兼容新版 WebStorm/IntelliJ 的新终端引擎
-- **自动打开文件** — Pi 报告修改过的文件自动在编辑器打开，并在每轮结束时提示改动数量
-- **可配置通知** — 文件修改、Pi 启动/退出、复制引用通知可分别开关
+- **可配置通知** — Pi 启动/退出、复制引用通知可分别开关
 - **模型配置** — 从 `~/.pi/agent/models.json` 加载模型列表
 
 ## 快捷键
@@ -40,8 +39,7 @@
 - **Pi command** — pi 二进制路径
 - **Extra arguments** — 额外 CLI 参数
 - **Disable Pi built-in themes** — 勾选时追加 `--no-themes`，让 Pi 跟随 IDE 主题
-- **Auto-open files** — 是否自动打开 Pi 修改的文件
-- **Notifications** — 文件修改 / Pi 启动退出 / 复制引用 三类通知分别开关
+- **Notifications** — Pi 启动退出 / 复制引用 两类通知分别开关
 
 ## 支持的 IDE
 

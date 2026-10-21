@@ -19,9 +19,7 @@ class PiSettingsConfigurable : Configurable {
     private var customModelField: JBTextField? = null
     private var thinkingLevelCombo: ComboBox<String>? = null
     private var extraArgsField: JBTextField? = null
-    private var autoOpenFilesCheckbox: JCheckBox? = null
     private var disableThemesCheckbox: JCheckBox? = null
-    private var showNotificationsCheckbox: JCheckBox? = null
     private var showProcessNotificationsCheckbox: JCheckBox? = null
     private var showCopyNotificationsCheckbox: JCheckBox? = null
 
@@ -63,13 +61,9 @@ class PiSettingsConfigurable : Configurable {
             preferredSize = java.awt.Dimension(400, preferredSize.height)
         }
         extraArgsField = JBTextField(settings.extraArgs)
-        autoOpenFilesCheckbox = JCheckBox("Auto-open files modified by Pi", settings.autoOpenFiles).apply {
-            toolTipText = "Pi reports its file changes through a small bridge extension it loads on start."
-        }
         disableThemesCheckbox = JCheckBox("Disable Pi built-in themes (--no-themes)", settings.disableThemes).apply {
             toolTipText = "Appends --no-themes so Pi follows the IDE light/dark theme instead of its own themes."
         }
-        showNotificationsCheckbox = JCheckBox("Notify when Pi modifies files", settings.showNotifications)
         showProcessNotificationsCheckbox = JCheckBox("Notify on Pi startup, exit and errors", settings.showProcessNotifications)
         showCopyNotificationsCheckbox = JCheckBox("Notify when a reference is copied", settings.showCopyNotifications)
 
@@ -107,9 +101,7 @@ class PiSettingsConfigurable : Configurable {
                 font = font.deriveFont(java.awt.Font.BOLD)
                 border = JBUI.Borders.emptyTop(4)
             })
-            .addComponent(autoOpenFilesCheckbox!!, 1)
             .addComponent(disableThemesCheckbox!!, 1)
-            .addComponent(showNotificationsCheckbox!!, 1)
             .addComponent(showProcessNotificationsCheckbox!!, 1)
             .addComponent(showCopyNotificationsCheckbox!!, 1)
 
@@ -126,9 +118,7 @@ class PiSettingsConfigurable : Configurable {
                 customModelField?.text != settings.customModelId ||
                 thinkingLevelCombo?.selectedItem != settings.thinkingLevel ||
                 extraArgsField?.text != settings.extraArgs ||
-                autoOpenFilesCheckbox?.isSelected != settings.autoOpenFiles ||
                 disableThemesCheckbox?.isSelected != settings.disableThemes ||
-                showNotificationsCheckbox?.isSelected != settings.showNotifications ||
                 showProcessNotificationsCheckbox?.isSelected != settings.showProcessNotifications ||
                 showCopyNotificationsCheckbox?.isSelected != settings.showCopyNotifications
     }
@@ -141,9 +131,7 @@ class PiSettingsConfigurable : Configurable {
         settings.customModelId = customModelField?.text ?: ""
         settings.thinkingLevel = thinkingLevelCombo?.selectedItem as? String ?: "Default"
         settings.extraArgs = extraArgsField?.text ?: ""
-        settings.autoOpenFiles = autoOpenFilesCheckbox?.isSelected ?: true
         settings.disableThemes = disableThemesCheckbox?.isSelected ?: true
-        settings.showNotifications = showNotificationsCheckbox?.isSelected ?: true
         settings.showProcessNotifications = showProcessNotificationsCheckbox?.isSelected ?: true
         settings.showCopyNotifications = showCopyNotificationsCheckbox?.isSelected ?: true
     }
@@ -155,9 +143,7 @@ class PiSettingsConfigurable : Configurable {
         customModelField?.text = settings.customModelId
         thinkingLevelCombo?.selectedItem = settings.thinkingLevel
         extraArgsField?.text = settings.extraArgs
-        autoOpenFilesCheckbox?.isSelected = settings.autoOpenFiles
         disableThemesCheckbox?.isSelected = settings.disableThemes
-        showNotificationsCheckbox?.isSelected = settings.showNotifications
         showProcessNotificationsCheckbox?.isSelected = settings.showProcessNotifications
         showCopyNotificationsCheckbox?.isSelected = settings.showCopyNotifications
     }
