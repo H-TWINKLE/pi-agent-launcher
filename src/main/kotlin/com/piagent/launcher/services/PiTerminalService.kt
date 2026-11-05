@@ -356,31 +356,11 @@ class PiTerminalService(private val project: Project) {
                 append(" --no-themes")
             }
 
-            // The bridge flag goes before the user's extra arguments so a stray `--` in them
-            // cannot turn it into a positional argument.
-            append(buildBridgeArgs())
-
             if (settings.extraArgs.isNotBlank()) {
                 append(" ")
                 append(settings.extraArgs)
             }
         }
-    }
-
-    /**
-     * Installs the bundled pi extension and returns the `--ide-bridge=` argument for it.
-     *
-     * The extension lives in pi's own extension directory and is inert unless this flag is passed,
-     * so only sessions started from this IDE report file changes back.
-     */
-    private fun buildBridgeArgs(): String {
-        val settings = PiSettings.getInstance().state
-        if (!settings.autoOpenFiles && !settings.showNotifications) return ""
-
-        val extension = PiBridgeInstaller.install() ?: return ""
-        val url = PiBridgeServer.getInstance().url() ?: return ""
-        logger.info("Pi IDE bridge ready: ${extension.toAbsolutePath()} -> $url")
-        return " --ide-bridge=$url"
     }
 
     /** Replay queued reference text once the terminal is ready (retries while it boots). */

@@ -14,7 +14,6 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 - **Send to Pi** — Select code → Right-click → "Send to Pi" inserts `@path/file.go#L10-25` into the active terminal tab
 - **Copy reference** — Right-click code or a file → "Copy Code/File Reference" puts `@path/file.go#L10-25` on the clipboard
 - **Terminal support** — Sends references to the active terminal tab, including the new terminal engine used by recent WebStorm/IntelliJ versions
-- **Auto-open files** — Files Pi reports as modified open in the editor, and a notification summarises each run
 - **Process notifications** — Get notified when Pi exits unexpectedly or fails to start
 - **Model configuration** — Pick model and thinking level from `~/.pi/agent/models.json`
 
@@ -42,8 +41,7 @@ One-click [Pi coding agent](https://pi.dev) launcher for JetBrains IDEs — open
 - **Pi command** — Custom path to pi binary
 - **Extra arguments** — Additional CLI flags
 - **Disable Pi themes** — Append `--no-themes` so Pi follows the IDE theme instead of its own
-- **Auto-open files** — Toggle auto-opening the files Pi modified
-- **Notifications** — Toggle file-change, startup/exit and clipboard-copy notifications separately
+- **Notifications** — Toggle startup/exit and clipboard-copy notifications separately
 
 ## Supported IDEs
 
@@ -78,9 +76,6 @@ src/main/kotlin/com/piagent/launcher/
 │   └── PiNotifications.kt         # Action feedback notifications
 ├── services/
 │   ├── PiTerminalService.kt       # Terminal lifecycle + send text
-│   ├── PiBridgeServer.kt          # Loopback endpoint for the pi extension
-│   ├── PiBridgeInstaller.kt       # Installs pi-ide-bridge.ts (version-checked)
-│   ├── PiFileTracker.kt           # Opens files reported by the bridge
 │   └── PiStatusWidget.kt          # Status bar widget
 ├── settings/
 │   ├── PiSettings.kt              # Persistent config
