@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.piagent.launcher"
-version = "0.1.12"
+version = "0.1.14"
 
 repositories {
     mavenCentral()
@@ -38,7 +38,7 @@ kotlin {
 tasks {
     patchPluginXml {
         sinceBuild.set("243")
-        untilBuild.set("262.*")
+        untilBuild.set(provider { null })
     }
 
     buildSearchableOptions {

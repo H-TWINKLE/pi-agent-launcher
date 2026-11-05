@@ -47,6 +47,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+    <h3>0.1.14</h3>
+    <ul>
+        <li>Removed the hard-coded maximum IDE build (<code>until-build</code>), so the plugin installs and loads in IntelliJ IDEA <b>2026.3</b> (build 263) and later</li>
+        <li>Minimum supported build is unchanged: 2024.3 (build 243)</li>
+    </ul>
     <h3>0.1.12</h3>
     <ul>
         <li>Send selection/file references to the <b>currently active terminal tab</b>, including a Pi started manually (no extra Pi tab is opened)</li>
